@@ -1,143 +1,76 @@
-# ELEC0136: Machine Learning System Design
+# S&P 500 Trading Policy via Deep Sequence Modelling
 
-## Summative assessment
+An end-to-end AI system that learns a discrete trading policy (Buy / Hold / Sell) for the S&P 500 index from historical price, volatility, interest-rate, and gold-market data. Built as the final assignment for UCL's ELEC0136 — AI System Design module.
 
-### Brief
+## Overview
 
-You are the junior data scientist on “Money Money Money!”. Your product manager, David, asks you to design, justify, and reproduce an AI-based decision system that informs a policy (Buy / Hold / Sell) to automatically perform trading actions (Buy / Hold / Sell) on the S&P 500, a stock market index that tracks the stock performance of 500 of the largest companies listed in the US stock exchanges. The aim of the decision system is to increase the company’s revenue.
+The system treats trading as a supervised classification problem: given a 20-day window of engineered features, predict one of three actions over the following 5-day horizon. It covers the full pipeline end to end — data acquisition, validation, storage, feature engineering, dataset construction, model training, baseline comparison, and evaluation — rather than just the model itself.
 
-David would like you to report back with a documented data pipeline: data discovery, acquisition, validated, storage, processing, feature analysis, training and evaluation protocols, and an auditable trail of choices and trade-offs that allows them to interpret the system’s decisions.
+## Data
 
-### Constraints
+- **Sources:** S&P 500 OHLCV, CBOE VIX, US Treasury yields, and gold spot prices, all pulled via the `yfinance` API.
+- **Period:** January 2020 – December 2025.
+- **Storage:** Raw and processed data persisted to a local SQLite database (`data/trading.db`), with a validation stage checking for missing dates, gaps, and anomalous values before features are built.
 
-- No paid services. Use only free/public data & infrastructure.
-- Do not use external database services. Please spawn your own database on a local machine. If, for any reason, you want to use an external service (e.g., Mongo Atlas), make sure the database is running and accessible for 2 months after submission.
-- No feedback is allowed before submission.
-- **AI Usage Disclosure.** We adopt the UCL Category 2 level of use of GenAI: <https://www.ucl.ac.uk/teaching-learning/generative-ai-hub/three-categories-genai-use-assessment>. Reports and codes that do not employ GenAI will be rewarded. Reports and codes that use GenAI, but that do not declare its use will be penalised.
+## Dataset Construction
 
----
+- **Lookback window:** 20 trading days of history per sample.
+- **Features:** 30 engineered features per sample, grouped into categories (price/return-based, moving averages, volatility, external indicators, etc.).
+- **Labelling:** Forward-looking 5-day return thresholded at ±0.5% to assign Buy / Hold / Sell labels.
+- **Split:** Chronological train/validation/test split (841 / 180 / 181 samples) to avoid look-ahead bias — no shuffling across time.
 
-## Deliverables
+Feature relevance was checked with PCA and a correlation analysis before committing to the final feature set, and a group-wise ablation study was run post-hoc to quantify which feature groups actually mattered (see Results).
 
-### Report
+## Model
+Linear(128) → LSTM(128) → LSTM(128) → Linear(128) → Policy(3)
 
-- Must be max 8 pages, excluded references and an optional appendix.
-- Must TMRL template attached. Overleaf is strongly advised.
-- Must be submitted in PDF format. Reports that do not respect template, or submitted in different formats will be desk-rejected and have a score of 0 (zero).
-- Please include your student number and the repo URL in the report. Do not include your name.
 
-### Code
+A two-layer LSTM sequence model over the 20-day feature window, with linear projection layers at the input and output, producing a 3-way softmax over the action space.
 
-- Produces the evidence that you presented in your report.
-- Plain Python: no notebooks, no Makefiles.
-- Single entry point: a `main.py` file, in the root of the repository, **must** run all the data pipeline: collecting the data, validating it, storing it, analysing it, saving plots on disk, running the training, and evaluating the model.
-- Deterministic: fixed seeds; no interactive input; plots saved to disk.
-- Environment: `environment.yml` in the root of the repo are mandatory and must contain all the packages required to run your code.
-- **Autograding:** we run an automated routine to score your code. The routine will install your `environment.yml` file, and run the `main.py` file in the root of your repository.
-- No manual intervention: we will not perform any manual check to score your code. Any instruction in the readme file or sent by email will be ignored.
+- **Optimizer:** Adam
+- **Loss:** Categorical cross-entropy with class weighting (to counter label imbalance)
+- **Model selection:** Early stopping on validation macro-F1
+- **Training budget:** 15-minute cap per run
+- **Seeds:** 3 random seeds, results reported as mean ± std
 
----
+## Baselines
 
-## How to submit
+The DNN is compared against five baselines: majority-class, last-return, logistic regression, random forest, and XGBoost. Confusion matrices for every model/seed combination are included in the full report.
 
-### Report
+## Results
 
-Please use the “Submission point” on Moodle.
+| Model | Test Accuracy | Test Macro-F1 |
+|---|---|---|
+| Best baseline (XGBoost) | — | 0.389 |
+| LSTM policy (mean, 3 seeds) | 0.407 ± 0.012 | 0.401 ± 0.021 |
 
-### Code
+The LSTM policy outperforms the strongest baseline by roughly 3% relative improvement in macro-F1.
 
-Please merge the “Feedback” pull request, as discussed in class.
+**Ablation findings:** removing the Moving Averages feature group caused the largest drop in performance, followed by the External Indicators group (VIX/yields/gold), indicating the model relies most heavily on trend and macro-context signals rather than raw price action alone.
 
----
+## Project Structure
+├── main.py # Pipeline entry point (acquisition → validation → training → evaluation)
+├── src/
+│ ├── features.py # Feature engineering
+│ └── ... # Data acquisition, validation, model, training, evaluation modules
+├── data/ # Raw/processed data, SQLite DB (gitignored)
+├── outputs/ # Trained model checkpoints, metrics, ablation results (gitignored)
+├── figures/ # Generated plots (gitignored)
+├── environment.yml
+└── requirements.txt
 
-## Marking scheme
 
-### REPORT — 70%
+## Running
 
-| Task                                                      | Score |
-| --------------------------------------------------------- | ----- |
-| T1 – Introduction and Conclusions                         | 7%    |
-| T2 – System overview, architecture, and data flow         | 7%    |
-| T3 – Data discovery and acquisition                       | 8%    |
-| T4 – Object model, data validation and storage            | 8%    |
-| T5 – Dataset construction and sampling                    | 8%    |
-| T6 – Problem formalisation                                | 8%    |
-| T7 – Representation learning, feature design and feature impact analysis | 8% |
-| T8 – Training and evaluation protocol                     | 8%    |
-| Writing quality (grammar, clarity, concision)             | 4%    |
-| Figures (readability, appropriateness)                    | 4%    |
+```bash
+conda env create -f environment.yml
+conda activate <env-name>
+python main.py
+```
 
-### CODE — 30%
+`main.py` runs the full staged pipeline: data acquisition → validation → storage → feature engineering → dataset construction → baseline training → feature/ablation analysis → DNN training → evaluation → results summary.
 
-| Task                         | Score |
-| ---------------------------- | ----- |
-| Reproducibility              | 10%   |
-| Code quality and documentation | 10% |
-| Code organisation            | 5%    |
-| Git and GitHub usage         | 5%    |
+## Notes
 
-Performance is secondary. Clear reasoning, leak-free design, reproducibility, and defensible trade-offs score highest.
-
----
-
-## Task details
-
-### T1. Problem OVERVIEW
-
-Describe your problem informally: Why is this a problem? Why your approach? What’s your objective? What would your solution unlock?
-
-### T2. System overview & data flow
-
-Describe the system components and how data flows end-to-end: acquisition, storage, validation, feature build, feature analysis, model training, evaluation, model selection. Do you plan to automatically ingest new data at regular intervals to continuously train the model? Identify the interfaces between systems, inputs/outputs, and failure points. Provide a schematic showing components, artifacts, and control flow (e.g., a simple block diagram), describing what components you used and how they relate to each other.
-
-### T3. Data discovery & ACQUISITION
-
-Acquire S&P500 prices, and additional external data that can be useful to solve your problem, each with provenance and a hypothesis for inclusion.
-
-You can (not must) use data between 1st January 2020 and 31st December 2025 max. Define the time span of the acquisition. Did you acquire 1 year of data? 2 years? Why? Describe the method used to acquire the dataset, and provide details of the interface. Did you use an API? Which one? How did you interact with it?
-
-Optimise data acquisition, for example, if data is already stored in the database, do not use the API to re-download it, but retrieve it from the database.
-
-Provide a description of each set of data that you acquired.
-
-### T4. Object model, DATA VALIDATION and STORAGE
-
-Define an object model and choose a storage format. Why this object model? Why not another? Why this format? Why not another? Justify your choice.
-
-Validate your data. Do all elements comply with your object model? Are there missing values? Duplicates? Outliers? Did you filter/alter your data? If so, why? Explore your data and justify any action on it.
-
-Define a storage strategy. What is the most suitable storage strategy? Why? What database did you use? Why?
-
-> **Infrastructure note:** You can spawn your own server locally, and use it for marking. If you do use a remote server, you must ensure it is running for at least 8 weeks after submission, or it will affect your marking.
-
-### T5. Dataset assembly AND SAMPLING
-
-Design your dataset. What does a data point look like? Why? How many do you have?
-
-Describe the sampling strategy that you will use to train the model and justify it.
-
-### T6. PROBLEM FORMALISATION
-
-Formalise your ML problem and present it mathematically. What is your learning objective? How will you solve it? Why?
-
-### T7. Representation learning & feature impact
-
-Analyse how the representation drives predictions. Options include:
-
-- **Learned representation:** Is there any pattern in the representation learned by the model?
-- **Feature analysis:** How are features related to each other? Are there correlated, anticorrelated or orthogonal features? Knowing this, how can you improve the model?
-- **Feature impact:** What’s the importance of each feature in the prediction? Run ablation studies.
-
-This is a good place to provide evidence of your claims using figures.
-
-### T8. TRAINING AND EVALUATION
-
-Train a Deep Neural Network with the following architecture:
-
-- `Linear(128) → LSTM(128) → LSTM(128) → Linear(128)`
-
-where the number in parentheses indicates the number of hidden units. To this model, append an additional layer to represent the policy that you want to describe.
-
-Use a loss function appropriate to your problem, and ensure your results are statistically significant (seeds). Training must be cut off after 15 minutes.
-
-Implement at least one baseline, used as a control measure to understand how well the model is doing, for example, naïve last value, or a linear model.
+- Individual coursework for UCL's ELEC0136 — AI System Design module.
+- AI assistance was used for code structuring and documentation only (UCL Category 2 compliant), not for the modelling methodology or analysis.
