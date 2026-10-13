@@ -1,0 +1,19 @@
+name: daps-final
+
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - numpy<2
+  - pip
+  - pandas
+  - pytorch=2.1.0
+  - cpuonly
+  - scikit-learn
+  - matplotlib
+  - seaborn  # NEW: For correlation heatmaps
+  - pip:
+      - -r requirements.txt

@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+
+# Envs
+.venv/
+.env/
+
+# Data + outputs (DO NOT COMMIT)
+data/
+figures/
+outputs/
+*.pt
+*.npy
+*.csv
+# Editor/OS
+.vscode/
+.DS_Store

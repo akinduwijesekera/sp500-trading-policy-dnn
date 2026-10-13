@@ -1,0 +1,4 @@
+yfinance
+pylint
+xgboost
+seaborn
